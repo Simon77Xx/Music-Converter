@@ -1,5 +1,3 @@
-# Music-Converter
-Softcreate is a lightweight desktop application for Windows and macOS, built with Electron. Its main interface is a small, transparent, always-on-top mascot window. Users drag and drop audio files or folders onto the character; the app detects whether a folder or audio file was dropped, then opens a dedicated processing window.
 # Softcreate
 
 A small **Electron** desktop utility: a transparent desktop mascot acts as the drag-and-drop entry point. It supports **ZIP archiving for folders** and **transcoding / lossy re-encoding for common audio formats**. Output is written by default to a `SoftcreateOutput` folder under the user’s home directory.
