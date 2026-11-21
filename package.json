@@ -2,6 +2,7 @@
   "name": "softcreate",
   "version": "0.1.0",
   "description": "桌宠音乐转换 / 文件夹归档（Electron）",
+  "author": "Simon77Xx",
   "main": "out/main/index.js",
   "type": "module",
   "scripts": {
@@ -9,7 +10,8 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "pack": "electron-vite build && electron-builder --dir",
-    "dist:win": "electron-vite build && electron-builder --win"
+    "dist:win": "electron-vite build && electron-builder --win --publish never",
+    "dist:mac": "electron-vite build && electron-builder --mac --publish never"
   },
   "build": {
     "appId": "com.softcreate.musicconverter",
@@ -24,13 +26,34 @@
     "asarUnpack": [
       "**/node_modules/ffmpeg-static/**"
     ],
-    "electronDist": "node_modules/electron/dist",
     "win": {
       "target": [
-        "dir",
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Softcreate 桌宠"
+    },
+    "mac": {
+      "target": [
+        "dmg",
         "zip"
-      ],
-      "signAndEditExecutable": false
+      ]
     }
   },
   "dependencies": {
