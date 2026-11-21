@@ -42,25 +42,32 @@ export function buildOutputPath(
 }
 
 function buildFfmpegArgs(opts: TranscodeOptions, outputPath: string): string[] {
-  // -y 允许写入我们刚计算出的唯一目标路径；-vn 禁用视频流/封面流，避免 mp4/m4v 或带封面音频转纯音频格式时失败
-  const args = ['-y', '-i', opts.inputPath, '-vn']
+  // -y 允许写入唯一目标路径；-vn 禁用视频流；-map_metadata 0 完整保留歌名/歌手/专辑等元数据供网易云/Apple Music 识别
+  const args = ['-y', '-i', opts.inputPath, '-vn', '-map_metadata', '0']
 
   switch (opts.outputFormat) {
     case 'mp3':
-      args.push('-c:a', 'libmp3lame')
+      args.push('-c:a', 'libmp3lame', '-id3v2_version', '3')
       if (opts.audioBitrateKbps) {
         args.push('-b:a', `${opts.audioBitrateKbps}k`)
       } else {
-        args.push('-q:a', '2')
+        args.push('-b:a', '320k')
+      }
+      break
+    case 'm4a':
+      args.push('-c:a', 'aac', '-movflags', '+faststart')
+      if (opts.audioBitrateKbps) {
+        args.push('-b:a', `${opts.audioBitrateKbps}k`)
+      } else {
+        args.push('-b:a', '256k')
       }
       break
     case 'aac':
-    case 'm4a':
       args.push('-c:a', 'aac')
       if (opts.audioBitrateKbps) {
         args.push('-b:a', `${opts.audioBitrateKbps}k`)
       } else {
-        args.push('-b:a', '192k')
+        args.push('-b:a', '256k')
       }
       break
     case 'wav':

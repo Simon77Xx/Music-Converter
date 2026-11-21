@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -10,14 +10,21 @@ import {
   pickOutputDirDialog,
   setOutputDir
 } from './paths'
-import { analyzePaths } from './analyze'
+import { analyzePaths, COMMON_AUDIO_EXT, PROPRIETARY_EXT } from './analyze'
 import { buildOutputPath, runFfmpeg } from './ffmpeg'
-import type { AudioOutputFormat, DropTask, JobProgressPayload, PetConfig } from '../shared/types'
+import type {
+  AudioOutputFormat,
+  DropTask,
+  JobProgressPayload,
+  PetConfig,
+  ProcessTabId
+} from '../shared/types'
 import { zipFolderTo } from './zipFolder'
 import {
   importPetImageFromPath,
   loadPetConfig,
-  pickAndSavePetImage,
+  pickAudioFileAsDataUrl,
+  pickImageFileAsDataUrl,
   savePetConfig
 } from './petConfig'
 
@@ -25,15 +32,33 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const isDev = process.env.NODE_ENV === 'development' || !!process.env['ELECTRON_RENDERER_URL']
 
+const BASE_WIDGET_PX = 180
+
 const taskStore = new Map<string, DropTask>()
 const jobAbortControllers = new Map<string, AbortController>()
 
 let petWindow: BrowserWindow | null = null
 let processWindow: BrowserWindow | null = null
 let activeProcessTaskId: string | null = null
+let currentStudioTab: ProcessTabId = 'converter'
+
+// 拖拽状态记录
+let dragStartCursor: { x: number; y: number } | null = null
+let dragStartBounds: Electron.Rectangle | null = null
 
 function getPreloadPath(): string {
   return join(__dirname, '../preload/index.mjs')
+}
+
+function getAppIconPath(): string {
+  return isDev
+    ? join(process.cwd(), 'public/icon.png')
+    : join(__dirname, '../renderer/icon.png')
+}
+
+function getWidgetSizePx(scale: number): number {
+  const s = Math.min(2.5, Math.max(0.6, Number(scale) || 1))
+  return Math.round(BASE_WIDGET_PX * s)
 }
 
 function abortTaskJob(taskId: string): void {
@@ -51,16 +76,37 @@ function sendJobProgress(taskId: string, ratio: number): void {
   processWindow.webContents.send('job:progress', payload)
 }
 
-function createPetWindow(): void {
+function broadcastPetConfig(cfg: PetConfig): void {
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.webContents.send('pet:config-updated', cfg)
+  }
+  if (processWindow && !processWindow.isDestroyed()) {
+    processWindow.webContents.send('pet:config-updated', cfg)
+  }
+}
+
+async function createPetWindow(): Promise<void> {
+  const cfg = await loadPetConfig()
+  const size = getWidgetSizePx(cfg.scale)
+  const workArea = screen.getPrimaryDisplay().workArea
+
+  const initX = cfg.isFlippedLeft
+    ? workArea.x
+    : workArea.x + workArea.width - size
+  const initY = workArea.y + workArea.height - size
+
   petWindow = new BrowserWindow({
-    width: 420,
-    height: 580,
+    x: initX,
+    y: initY,
+    width: size,
+    height: size,
     frame: false,
     transparent: true,
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: false,
     resizable: false,
+    icon: getAppIconPath(),
     webPreferences: {
       preload: getPreloadPath(),
       contextIsolation: true,
@@ -70,9 +116,9 @@ function createPetWindow(): void {
   })
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
-    petWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/pet.html`)
+    void petWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/pet.html`)
   } else {
-    petWindow.loadFile(join(__dirname, '../renderer/pet.html'))
+    void petWindow.loadFile(join(__dirname, '../renderer/pet.html'))
   }
 
   petWindow.once('ready-to-show', () => {
@@ -87,23 +133,162 @@ function createPetWindow(): void {
   })
 }
 
-function createProcessWindow(taskId: string): void {
-  if (processWindow && !processWindow.isDestroyed()) {
-    if (activeProcessTaskId) {
-      abortTaskJob(activeProcessTaskId)
-      taskStore.delete(activeProcessTaskId)
+/**
+ * 以鲸鱼所在贴边角为固定锚点缩放窗口尺寸（右下角或左下角）
+ */
+function resizePetWindowAnchored(newScale: number, isFlippedLeft?: boolean): void {
+  if (!petWindow || petWindow.isDestroyed()) return
+  const bounds = petWindow.getBounds()
+  const newSize = getWidgetSizePx(newScale)
+  if (bounds.width === newSize && bounds.height === newSize) return
+
+  const newX = isFlippedLeft
+    ? bounds.x
+    : bounds.x + bounds.width - newSize
+  const newY = bounds.y + bounds.height - newSize
+
+  petWindow.setBounds({
+    x: Math.round(newX),
+    y: Math.round(newY),
+    width: newSize,
+    height: newSize
+  })
+}
+
+/**
+ * 松手后执行四边吸附与左贴边水平镜像翻转判定
+ */
+async function settlePetWindowSnap(): Promise<PetConfig> {
+  const cfg = await loadPetConfig()
+  if (!petWindow || petWindow.isDestroyed()) return cfg
+
+  const bounds = petWindow.getBounds()
+  const display = screen.getDisplayMatching(bounds)
+  const wa = display.workArea
+
+  const centerX = bounds.x + bounds.width / 2
+  const centerY = bounds.y + bounds.height / 2
+
+  let targetX = bounds.x
+  let targetY = bounds.y
+
+  const snap = cfg.snap
+  if (snap.mode !== 'off') {
+    const toPxX = (v: number) => (snap.mode === 'ratio' ? (wa.width * v) / 100 : v)
+    const toPxY = (v: number) => (snap.mode === 'ratio' ? (wa.height * v) / 100 : v)
+
+    const leftZone = toPxX(snap.left)
+    const rightZone = toPxX(snap.right)
+    const topZone = toPxY(snap.top)
+    const bottomZone = toPxY(snap.bottom)
+
+    if (leftZone > 0 && centerX - wa.x <= leftZone) {
+      targetX = wa.x
+    } else if (rightZone > 0 && wa.x + wa.width - centerX <= rightZone) {
+      targetX = wa.x + wa.width - bounds.width
+    } else {
+      targetX = Math.max(wa.x, Math.min(wa.x + wa.width - bounds.width, targetX))
     }
-    processWindow.close()
+
+    if (topZone > 0 && centerY - wa.y <= topZone) {
+      targetY = wa.y
+    } else if (bottomZone > 0 && wa.y + wa.height - centerY <= bottomZone) {
+      targetY = wa.y + wa.height - bounds.height
+    } else {
+      targetY = Math.max(wa.y, Math.min(wa.y + wa.height - bounds.height, targetY))
+    }
+  } else {
+    targetX = Math.max(wa.x, Math.min(wa.x + wa.width - bounds.width, targetX))
+    targetY = Math.max(wa.y, Math.min(wa.y + wa.height - bounds.height, targetY))
   }
 
-  activeProcessTaskId = taskId
+  petWindow.setBounds({
+    x: Math.round(targetX),
+    y: Math.round(targetY),
+    width: bounds.width,
+    height: bounds.height
+  })
+
+  const finalCenterX = targetX + bounds.width / 2
+  let isFlippedLeft = Boolean(cfg.isFlippedLeft)
+  if (snap.flipOnLeft) {
+    const flipPx =
+      snap.mode === 'px'
+        ? snap.flipThreshold
+        : (wa.width * (snap.flipThreshold || 30)) / 100
+    isFlippedLeft = finalCenterX - wa.x <= flipPx
+  } else {
+    isFlippedLeft = false
+  }
+
+  if (isFlippedLeft !== Boolean(cfg.isFlippedLeft)) {
+    const updated = await savePetConfig({ isFlippedLeft })
+    broadcastPetConfig(updated)
+    return updated
+  }
+
+  return cfg
+}
+
+function computeStudioPopupPosition(winW: number, winH: number): { x: number; y: number } {
+  const wa = petWindow && !petWindow.isDestroyed()
+    ? screen.getDisplayMatching(petWindow.getBounds()).workArea
+    : screen.getPrimaryDisplay().workArea
+
+  if (!petWindow || petWindow.isDestroyed()) {
+    return {
+      x: Math.round(wa.x + (wa.width - winW) / 2),
+      y: Math.round(wa.y + (wa.height - winH) / 2)
+    }
+  }
+
+  const pb = petWindow.getBounds()
+  const petCenterX = pb.x + pb.width / 2
+  const isLeftHalf = petCenterX < wa.x + wa.width / 2
+
+  // 如果小鲸鱼在左侧，弹窗放在她右侧；如果小鲸鱼在右侧，弹窗放在她左侧
+  let x = isLeftHalf ? pb.x + pb.width + 12 : pb.x - winW - 12
+  let y = pb.y + pb.height - winH
+
+  x = Math.max(wa.x + 12, Math.min(wa.x + wa.width - winW - 12, x))
+  y = Math.max(wa.y + 12, Math.min(wa.y + wa.height - winH - 12, y))
+
+  return { x: Math.round(x), y: Math.round(y) }
+}
+
+function openStudioWindow(options?: { tab?: ProcessTabId; taskId?: string }): void {
+  const tab = options?.tab ?? 'converter'
+  const taskId = options?.taskId ?? activeProcessTaskId ?? ''
+  currentStudioTab = tab
+  if (options?.taskId) {
+    activeProcessTaskId = options.taskId
+  }
+
+  if (processWindow && !processWindow.isDestroyed()) {
+    processWindow.webContents.send('studio:navigate', {
+      tab,
+      taskId: activeProcessTaskId
+    })
+    if (processWindow.isMinimized()) processWindow.restore()
+    processWindow.show()
+    processWindow.focus()
+    return
+  }
+
+  const winW = 540
+  const winH = 660
+  const pos = computeStudioPopupPosition(winW, winH)
 
   const win = new BrowserWindow({
-    width: 520,
-    height: 640,
-    minWidth: 480,
-    minHeight: 520,
+    x: pos.x,
+    y: pos.y,
+    width: winW,
+    height: winH,
+    minWidth: 500,
+    minHeight: 560,
     show: false,
+    icon: getAppIconPath(),
+    title: '小鲸鱼音乐转换器 · 跨平台导入网易云 / Apple Music',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: getPreloadPath(),
@@ -115,25 +300,30 @@ function createProcessWindow(taskId: string): void {
 
   processWindow = win
 
-  const q = `taskId=${encodeURIComponent(taskId)}`
+  const params = new URLSearchParams()
+  if (taskId) params.set('taskId', taskId)
+  params.set('tab', tab)
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
-    win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/process.html?${q}`)
+    void win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/process.html?${params.toString()}`)
   } else {
-    win.loadFile(join(__dirname, '../renderer/process.html'), {
-      query: { taskId }
-    })
+    const query: Record<string, string> = { tab }
+    if (taskId) query.taskId = taskId
+    void win.loadFile(join(__dirname, '../renderer/process.html'), { query })
   }
 
   win.once('ready-to-show', () => {
     if (!win.isDestroyed()) {
       win.show()
+      win.focus()
     }
   })
 
   win.on('closed', () => {
-    abortTaskJob(taskId)
-    taskStore.delete(taskId)
+    if (activeProcessTaskId) {
+      abortTaskJob(activeProcessTaskId)
+      taskStore.delete(activeProcessTaskId)
+    }
     if (processWindow === win) {
       processWindow = null
       activeProcessTaskId = null
@@ -147,18 +337,64 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('task:open', async (_, task: DropTask) => {
+    if (activeProcessTaskId) {
+      abortTaskJob(activeProcessTaskId)
+      taskStore.delete(activeProcessTaskId)
+    }
     const id = randomUUID()
     taskStore.set(id, task)
-    createProcessWindow(id)
+    activeProcessTaskId = id
+    openStudioWindow({ tab: 'converter', taskId: id })
     return id
   })
 
+  ipcMain.handle('studio:open', async (_, payload?: { tab?: ProcessTabId }) => {
+    openStudioWindow({ tab: payload?.tab ?? 'converter' })
+  })
+
+  ipcMain.handle('studio:pick-files', async (_, mode: 'audio' | 'folder') => {
+    const parent = processWindow ?? petWindow
+    if (mode === 'folder') {
+      const opts: Electron.OpenDialogOptions = {
+        title: '选择要打包为 ZIP 的文件夹',
+        properties: ['openDirectory']
+      }
+      const res = parent
+        ? await dialog.showOpenDialog(parent, opts)
+        : await dialog.showOpenDialog(opts)
+      if (res.canceled || res.filePaths.length === 0) return null
+      const task = await analyzePaths([res.filePaths[0]])
+      const id = randomUUID()
+      taskStore.set(id, task)
+      activeProcessTaskId = id
+      return { taskId: id, task }
+    } else {
+      const exts = [...COMMON_AUDIO_EXT, ...PROPRIETARY_EXT]
+      const opts: Electron.OpenDialogOptions = {
+        title: '选择要转换或压缩的音频/视频文件（可多选）',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: '音频文件', extensions: exts }]
+      }
+      const res = parent
+        ? await dialog.showOpenDialog(parent, opts)
+        : await dialog.showOpenDialog(opts)
+      if (res.canceled || res.filePaths.length === 0) return null
+      const task = await analyzePaths(res.filePaths)
+      const id = randomUUID()
+      taskStore.set(id, task)
+      activeProcessTaskId = id
+      return { taskId: id, task }
+    }
+  })
+
   ipcMain.handle('task:get', async (_, taskId: string) => {
+    if (!taskId && activeProcessTaskId) {
+      return taskStore.get(activeProcessTaskId) ?? null
+    }
     return taskStore.get(taskId) ?? null
   })
 
   ipcMain.handle('paths:output-dir', async () => getOutputDir())
-
   ipcMain.handle('paths:default-output-dir', async () => getDefaultOutputDir())
 
   ipcMain.handle('paths:pick-output-dir', async () => {
@@ -203,6 +439,11 @@ function registerIpc(): void {
           },
           controller.signal
         )
+        petWindow?.webContents.send('pet:job-completed', {
+          kind: 'folder',
+          count: 1,
+          outputDir: outDir
+        })
         return result
       } finally {
         if (jobAbortControllers.get(payload.taskId) === controller) {
@@ -223,9 +464,7 @@ function registerIpc(): void {
         mode: 'convert' | 'compress'
         outputDir?: string
         bitrateKbps?: number
-        /** 压缩子模式：有损 → MP3；无损 → FLAC（与 outputFormat 在 compress 模式下由服务端决定） */
         compressProfile?: 'lossy' | 'lossless'
-        /** 无损压缩时 FLAC 等级 0–12，默认 8 */
         flacCompressionLevel?: number
       }
     ) => {
@@ -294,6 +533,12 @@ function registerIpc(): void {
         }
 
         sendJobProgress(payload.taskId, 1)
+        petWindow?.webContents.send('pet:job-completed', {
+          kind: 'audio',
+          count: outputs.length,
+          format: resolved.format.toUpperCase(),
+          outputDir: outDir
+        })
         return { outputPaths: outputs, outputDir: outDir }
       } finally {
         if (jobAbortControllers.get(payload.taskId) === controller) {
@@ -325,31 +570,71 @@ function registerIpc(): void {
     }
   })
 
+  // 小鲸鱼指针拖拽与屏幕四边吸附
+  ipcMain.handle('pet:drag-start', async () => {
+    if (!petWindow || petWindow.isDestroyed()) return
+    dragStartCursor = screen.getCursorScreenPoint()
+    dragStartBounds = petWindow.getBounds()
+  })
+
+  ipcMain.handle('pet:drag-move', async () => {
+    if (!petWindow || petWindow.isDestroyed() || !dragStartCursor || !dragStartBounds) return
+    const cur = screen.getCursorScreenPoint()
+    const dx = cur.x - dragStartCursor.x
+    const dy = cur.y - dragStartCursor.y
+    petWindow.setBounds({
+      x: Math.round(dragStartBounds.x + dx),
+      y: Math.round(dragStartBounds.y + dy),
+      width: dragStartBounds.width,
+      height: dragStartBounds.height
+    })
+  })
+
+  ipcMain.handle('pet:drag-end', async () => {
+    dragStartCursor = null
+    dragStartBounds = null
+    return settlePetWindowSnap()
+  })
+
   ipcMain.handle('pet:get-config', async () => {
     return loadPetConfig()
   })
 
   ipcMain.handle('pet:save-config', async (_, partial: Partial<PetConfig>) => {
-    return savePetConfig(partial)
+    const saved = await savePetConfig(partial)
+    if (partial.scale !== undefined) {
+      resizePetWindowAnchored(saved.scale, saved.isFlippedLeft)
+    }
+    if (partial.snap !== undefined) {
+      await settlePetWindowSnap()
+    }
+    broadcastPetConfig(saved)
+    return saved
   })
 
-  ipcMain.handle('pet:pick-image', async () => {
-    return pickAndSavePetImage(petWindow)
+  ipcMain.handle('pet:pick-raw-image', async () => {
+    return pickImageFileAsDataUrl(processWindow ?? petWindow)
+  })
+
+  ipcMain.handle('pet:pick-raw-audio', async () => {
+    return pickAudioFileAsDataUrl(processWindow ?? petWindow)
   })
 
   ipcMain.handle('pet:import-image', async (_, sourcePath: string) => {
-    return importPetImageFromPath(sourcePath)
+    const saved = await importPetImageFromPath(sourcePath)
+    broadcastPetConfig(saved)
+    return saved
   })
 }
 
 app.whenReady().then(async () => {
   await ensureOutputDir()
   registerIpc()
-  createPetWindow()
+  await createPetWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createPetWindow()
+      void createPetWindow()
     }
   })
 })
@@ -365,4 +650,3 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
-

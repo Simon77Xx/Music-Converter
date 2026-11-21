@@ -5,12 +5,13 @@
     'Microsoft YaHei',
     system-ui,
     sans-serif;
-  color: #1a1a1a;
+  color: #203170;
   background: transparent;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -21,666 +22,849 @@ body {
   user-select: none;
 }
 
-/* 桌宠窗口与主题变量 */
-.pet-root {
-  --pet-accent: #38bdf8;
-  --pet-accent-glow: rgba(56, 189, 248, 0.45);
+/* ============================================================================
+ * 1. 桌面悬浮小鲸鱼挂件 (DSH Whale Widget 1:1 复刻样式)
+ * ============================================================================ */
+.dshwv-root {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  --dshw-base: 100vw;
+  --dshw-u: calc(100vw / 1026);
+  background: transparent !important;
+  border: 0 !important;
+  outline: 0 !important;
+  box-shadow: none !important;
+  transition: transform 0.3s ease;
+}
+
+.dshwv-root.dshwv-left {
+  transform: scaleX(-1);
+}
+
+.dshwv-root.dshwv-dragging {
+  cursor: grabbing;
+  transition: none;
+}
+
+.dshwv-body {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.dshwv-body.dshwv-pressed {
+  transform: scaleY(0.88) scaleX(1.05);
+}
+
+/* 右下角小鲸鱼 cut-out 角色容器 (纯粹贴边无泡泡遮挡，占满挂件 88%) */
+.dshwv-img-wrap {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 88%;
+  height: 88%;
+  cursor: grab;
+  z-index: 2;
+}
+
+.dshwv-img-wrap:active {
+  cursor: grabbing;
+}
+
+.dshwv-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  object-position: right bottom;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+/* 拖入文件或完成转换时的迷你轻提示（左翻转时自动反向保持正向） */
+.dshwv-mini-toast {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 40px;
+  background: rgba(32, 49, 112, 0.92);
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  z-index: 15;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.dshwv-root.dshwv-left .dshwv-mini-toast {
+  transform: scaleX(-1);
+}
+
+.dshwv-quick-item {
+  width: 100%;
+  border: 1px solid rgba(32, 49, 112, 0.28);
+  border-radius: 7px;
+  background: #f8fafd;
+  color: #203170;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 8px;
+  margin: 3px 0;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.dshwv-quick-item:hover {
+  background: rgba(32, 49, 112, 0.12);
+}
+
+.dshwv-quick-item.primary {
+  background: #203170;
+  color: #ffffff;
+  border-color: #203170;
+}
+
+.dshwv-quick-item.primary:hover {
+  background: #2f4488;
+}
+
+.dshwv-quick-item.danger {
+  color: #c0392b;
+  border-color: rgba(192, 57, 43, 0.35);
+}
+
+.dshwv-quick-item.danger:hover {
+  background: #c0392b;
+  color: #ffffff;
+}
+
+/* 左上方 SVG 漫画思考泡泡 (1026 x 700 几何画布) */
+.dshwv-pop {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  aspect-ratio: 1026 / 700;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dshwv-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.dshwv-pop.dshwv-pop-open .dshwv-svg * {
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+
+.dshwv-pop .dshwv-bshape,
+.dshwv-pop .dshwv-b1,
+.dshwv-pop .dshwv-b2 {
+  opacity: 0;
+  transform: scale(0.7);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.dshwv-pop.dshwv-pop-open .dshwv-bshape,
+.dshwv-pop.dshwv-pop-open .dshwv-b1,
+.dshwv-pop.dshwv-pop-open .dshwv-b2 {
+  opacity: 1;
+  transform: none;
+}
+
+.dshwv-pop.dshwv-pop-open .dshwv-b2 {
+  transition-delay: 0s;
+}
+.dshwv-pop.dshwv-pop-open .dshwv-b1 {
+  transition-delay: 0.12s;
+}
+.dshwv-pop.dshwv-pop-open .dshwv-bshape {
+  transition-delay: 0.24s;
+}
+
+.dshwv-pop .dshwv-bshape {
+  transition-delay: 0.08s;
+}
+.dshwv-pop .dshwv-b1 {
+  transition-delay: 0.16s;
+}
+.dshwv-pop .dshwv-b2 {
+  transition-delay: 0.24s;
+}
+
+/* 泡泡内文字与动图安全区（左翻转时自动反向镜像保持正向可读） */
+.dshwv-text {
+  position: absolute;
+  left: 44.25%;
+  top: 36%;
+  width: 66%;
+  height: auto !important;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #536ba9;
+  line-height: 1.18;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity 0.16s ease,
+    transform 0.3s ease;
+}
+
+.dshwv-pop.dshwv-pop-open .dshwv-text {
+  opacity: 1;
+  transition:
+    opacity 0.16s ease 0.34s,
+    transform 0.3s ease;
+}
+
+.dshwv-pop.dshwv-pop-open .dshwv-text.dshwv-fading {
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+
+.dshwv-root.dshwv-left .dshwv-text {
+  transform: translate(-50%, -50%) scaleX(-1);
+}
+
+.dshwv-trow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--dshw-u) * 10);
+  margin: calc(var(--dshw-u) * 3) 0;
+  max-width: 100%;
+}
+
+.dshwv-mod {
+  display: inline-block;
+  word-break: break-word;
+  max-width: 100%;
+}
+
+.dshwv-bubble-img {
+  max-width: calc(var(--dshw-u) * 440);
+  max-height: calc(var(--dshw-u) * 310);
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.dshwv-inline-btn {
+  border: none;
+  background: #203170;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* 跑马灯流光渐变文字动画 */
+@keyframes whaleMarquee {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.dshwv-marquee-ocean {
+  background: linear-gradient(90deg, #203170, #0ea5e9, #38bdf8, #203170);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  animation: whaleMarquee 3s linear infinite;
+}
+
+.dshwv-marquee-sakura {
+  background: linear-gradient(90deg, #ec4899, #f472b6, #818cf8, #ec4899);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  animation: whaleMarquee 3s linear infinite;
+}
+
+.dshwv-marquee-rainbow {
+  background: linear-gradient(
+    90deg,
+    #ef4444,
+    #f59e0b,
+    #10b981,
+    #3b82f6,
+    #8b5cf6,
+    #ef4444
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  animation: whaleMarquee 2.6s linear infinite;
+}
+
+.dshwv-marquee-gold {
+  background: linear-gradient(90deg, #b45309, #f59e0b, #fde047, #b45309);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+  animation: whaleMarquee 3.2s linear infinite;
+}
+
+/* 右上角悬停三横线汉堡按钮 ☰ (完全复刻用户截图) */
+.dshwv-menu-btn {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 7px;
+  background: rgba(32, 49, 112, 0.88);
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  z-index: 10;
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    background 0.15s ease;
+}
+
+.dshwv-menu-btn.dshwv-menu-btn-visible {
+  opacity: 1;
+}
+
+.dshwv-menu-btn:hover {
+  background: #203170;
+}
+
+.dshwv-menu-btn span {
+  display: block;
+  width: 15px;
+  height: 2px;
+  background: #ffffff;
+  border-radius: 1px;
+}
+
+/* 挂件内紧凑型 #203170 汉堡菜单（左翻转时自动反向镜像保持正向） */
+.dshwv-menu {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  top: 6px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1.5px solid rgba(32, 49, 112, 0.42);
+  border-radius: 11px;
+  padding: 8px 10px 0;
+  z-index: 20;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.25);
+  pointer-events: auto;
+}
+
+.dshwv-root.dshwv-left .dshwv-menu {
+  transform: scaleX(-1);
+}
+
+.dshwv-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  color: #203170;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.dshwv-select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(32, 49, 112, 0.4);
+  border-radius: 6px;
+  background: rgba(32, 49, 112, 0.06);
+  color: #203170;
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.dshwv-range {
+  flex: 1;
+  min-width: 0;
+  accent-color: #203170;
+  cursor: pointer;
+}
+
+.dshwv-volpct {
+  width: 22px;
+  text-align: right;
+  font-weight: 700;
+  color: #203170;
+  font-size: 11px;
+}
+
+.dshwv-check {
+  width: 14px;
+  height: 14px;
+  accent-color: #203170;
+  cursor: pointer;
+}
+
+.dshwv-sound {
+  flex: 1;
+  border: 1px solid rgba(32, 49, 112, 0.38);
+  border-radius: 6px;
+  background: rgba(32, 49, 112, 0.08);
+  color: #203170;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.dshwv-sound:hover {
+  background: rgba(32, 49, 112, 0.16);
+}
+
+.dshwv-roleimport {
+  border: 1px solid #203170;
+  border-radius: 6px;
+  background: #203170;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.dshwv-roleimport:hover {
+  background: #2f4488;
+}
+
+.dshwv-menu-sep {
+  height: 1px;
+  background: rgba(32, 49, 112, 0.22);
+  margin: 5px 0;
+}
+
+.dshwv-ver {
+  height: 15px;
+  line-height: 15px;
+  font-size: 9px;
+  text-align: center;
+  color: #203170;
+  opacity: 0.55;
+}
+
+/* ============================================================================
+ * 2. 小鲸鱼工作台窗口 (ProcessApp - #203170 海军蓝白四合一工作台)
+ * ============================================================================ */
+.wstudio-root {
   width: 100vw;
   height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 10px;
-}
-
-.pet-root.theme-blue {
-  --pet-accent: #38bdf8;
-  --pet-accent-glow: rgba(56, 189, 248, 0.45);
-}
-.pet-root.theme-pink {
-  --pet-accent: #f472b6;
-  --pet-accent-glow: rgba(244, 114, 182, 0.45);
-}
-.pet-root.theme-emerald {
-  --pet-accent: #34d399;
-  --pet-accent-glow: rgba(52, 211, 153, 0.45);
-}
-.pet-root.theme-violet {
-  --pet-accent: #a78bfa;
-  --pet-accent-glow: rgba(167, 139, 250, 0.45);
-}
-
-.pet-topbar {
-  width: 320px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  padding: 5px 10px;
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.78);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
-}
-
-.pet-drag-handle {
-  flex: 1;
-  -webkit-app-region: drag;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.92);
-  cursor: move;
-  padding: 2px 4px;
-  white-space: nowrap;
+  background: #e8ecf7;
+  color: #203170;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.pet-topbar-actions {
+.wstudio-navbar {
+  background: #ffffff;
+  border-bottom: 1.5px solid rgba(32, 49, 112, 0.2);
+  padding: 10px 14px 0;
+  flex: 0 0 auto;
+}
+
+.wstudio-nav-tabs {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  -webkit-app-region: no-drag;
+  gap: 6px;
 }
 
-.pet-pill-btn {
-  border: 1px solid var(--pet-accent);
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 600;
+.wstudio-nav-tab {
+  flex: 1;
+  border: 1px solid rgba(32, 49, 112, 0.22);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: #f3f5fb;
+  color: #536ba9;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 9px 6px;
   cursor: pointer;
   transition: all 0.15s;
 }
 
-.pet-pill-btn:hover,
-.pet-pill-btn.active {
-  background: var(--pet-accent);
-  color: #0f172a;
+.wstudio-nav-tab:hover {
+  background: #e2e8f6;
+  color: #203170;
 }
 
-.pet-icon-btn {
-  border: none;
-  background: rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.92);
-  border-radius: 7px;
-  width: 24px;
-  height: 22px;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
+.wstudio-nav-tab.active {
+  background: #203170;
+  color: #ffffff;
+  border-color: #203170;
+}
+
+.wstudio-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wstudio-card {
+  background: #ffffff;
+  border: 1px solid rgba(32, 49, 112, 0.26);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 3px 10px rgba(32, 49, 112, 0.06);
+}
+
+.wstudio-card-head {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.wstudio-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #203170;
+}
+
+.wstudio-subhint {
+  font-size: 11.5px;
+  color: #536ba9;
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
+
+.wstudio-badge {
+  background: rgba(32, 49, 112, 0.1);
+  color: #203170;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.wstudio-pick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wstudio-primary-btn {
+  border: 1px solid #203170;
+  background: #203170;
+  color: #ffffff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
   transition: background 0.15s;
 }
 
-.pet-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.28);
+.wstudio-primary-btn:hover {
+  background: #2f4488;
 }
 
-.pet-close-btn:hover {
-  background: rgba(239, 68, 68, 0.9);
-  color: #fff;
-}
-
-/* 桌宠主展示框 */
-.pet-drop {
-  position: relative;
-  width: 320px;
-  height: 390px;
-  border-radius: 20px;
-  border: 2px dashed rgba(255, 255, 255, 0.38);
-  background: rgba(20, 24, 38, 0.52);
-  backdrop-filter: blur(10px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 12px;
-  transition:
-    border-color 0.2s,
-    background 0.2s,
-    box-shadow 0.2s;
-}
-
-.pet-drop.frameless {
-  border-color: transparent;
-  background: transparent;
-  backdrop-filter: none;
-}
-
-.pet-drop.dragover {
-  border-color: var(--pet-accent);
-  background: rgba(30, 45, 75, 0.65);
-  box-shadow: 0 0 24px var(--pet-accent-glow);
-}
-
-/* 桌宠气泡台词 */
-.pet-bubble {
-  position: relative;
-  background: rgba(255, 255, 255, 0.94);
-  color: #0f172a;
-  padding: 7px 14px;
-  border-radius: 14px;
+.wstudio-secondary-btn {
+  border: 1px solid rgba(32, 49, 112, 0.4);
+  background: rgba(32, 49, 112, 0.08);
+  color: #203170;
+  border-radius: 8px;
+  padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
-  text-align: center;
-  max-width: 270px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
-  border: 1.5px solid var(--pet-accent);
-  z-index: 2;
-}
-
-.pet-bubble::after {
-  content: '';
-  position: absolute;
-  bottom: -6px;
-  left: 50%;
-  transform: translateX(-50%);
-  border-width: 6px 6px 0;
-  border-style: solid;
-  border-color: rgba(255, 255, 255, 0.94) transparent transparent;
-}
-
-/* 桌宠形象舞台与动画 */
-.pet-avatar-stage {
-  width: 220px;
-  height: 240px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  transition: transform 0.2s ease;
-}
-
-.pet-svg-wrap {
-  width: 195px;
-  height: 195px;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.32));
-}
-
-.pet-photo-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  transition: all 0.2s ease;
-}
-
-.pet-photo-wrap.shape-full {
-  width: 215px;
-  height: 235px;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
-}
-
-.pet-photo-wrap.shape-full .pet-custom-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.pet-photo-wrap.shape-circle {
-  width: 185px;
-  height: 185px;
-  border-radius: 50%;
-  border: 4px solid var(--pet-accent);
-  box-shadow:
-    0 8px 20px rgba(0, 0, 0, 0.35),
-    0 0 16px var(--pet-accent-glow);
-  background: rgba(15, 23, 42, 0.5);
-}
-
-.pet-photo-wrap.shape-circle .pet-custom-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.pet-photo-wrap.shape-rounded-card {
-  width: 190px;
-  height: 220px;
-  border-radius: 20px;
-  border: 4px solid #ffffff;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
-  background: rgba(15, 23, 42, 0.4);
-}
-
-.pet-photo-wrap.shape-rounded-card .pet-custom-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-@keyframes petFloat {
-  0%,
-  100% {
-    translate: 0 0;
-  }
-  50% {
-    translate: 0 -10px;
-  }
-}
-
-@keyframes petBounce {
-  0%,
-  100% {
-    rotate: -3deg;
-    translate: 0 0;
-  }
-  50% {
-    rotate: 3deg;
-    translate: 0 -6px;
-  }
-}
-
-@keyframes petPulse {
-  0%,
-  100% {
-    scale: 1;
-  }
-  50% {
-    scale: 1.05;
-  }
-}
-
-.anim-float {
-  animation: petFloat 3.2s ease-in-out infinite;
-}
-
-.anim-bounce {
-  animation: petBounce 2.2s ease-in-out infinite;
-}
-
-.anim-pulse {
-  animation: petPulse 2.6s ease-in-out infinite;
-}
-
-.pet-subhint {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(15, 23, 42, 0.55);
-  padding: 4px 12px;
-  border-radius: 999px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-/* 定制工坊面板 */
-.pet-customizer {
-  width: 320px;
-  height: 390px;
-  border-radius: 18px;
-  background: rgba(15, 23, 42, 0.92);
-  backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  padding: 12px 14px;
-  color: #f8fafc;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  overflow-y: auto;
-}
-
-.cust-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.cust-upload-btn {
-  border: none;
-  background: linear-gradient(90deg, #38bdf8, #818cf8);
-  color: #0f172a;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 5px 10px;
-  border-radius: 8px;
   cursor: pointer;
 }
 
-.cust-upload-btn:hover {
-  opacity: 0.92;
+.wstudio-secondary-btn:hover {
+  background: rgba(32, 49, 112, 0.16);
 }
 
-.cust-subhint {
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-.cust-section {
-  margin-top: 6px;
-}
-
-.cust-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #cbd5e1;
-  margin-bottom: 4px;
-}
-
-.cust-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.cust-chip {
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.07);
-  color: #e2e8f0;
-  border-radius: 7px;
+.wstudio-mini-btn {
+  border: 1px solid rgba(32, 49, 112, 0.35);
+  background: #ffffff;
+  color: #203170;
+  border-radius: 6px;
   padding: 4px 8px;
   font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wstudio-mini-btn:hover,
+.wstudio-mini-btn.active {
+  background: #203170;
+  color: #ffffff;
+}
+
+.wstudio-mini-btn.danger {
+  color: #c0392b;
+  border-color: rgba(192, 57, 43, 0.35);
+}
+
+.wstudio-mini-btn.danger:hover {
+  background: #c0392b;
+  color: #ffffff;
+}
+
+/* 分段控制器 & 2x4 格式矩阵 */
+.wstudio-seg-bar {
+  display: flex;
+  gap: 6px;
+  background: #f3f5fb;
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(32, 49, 112, 0.15);
+  margin-bottom: 10px;
+}
+
+.wstudio-seg-btn {
+  flex: 1;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #536ba9;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.wstudio-seg-btn.active {
+  background: #203170;
+  color: #ffffff;
+}
+
+.wstudio-sec-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #536ba9;
+  margin: 8px 0 6px;
+}
+
+.wstudio-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.wstudio-preset-card {
+  border: 1.5px solid rgba(32, 49, 112, 0.24);
+  border-radius: 10px;
+  background: #f8fafd;
+  padding: 10px 12px;
+  text-align: left;
   cursor: pointer;
   transition: all 0.15s;
 }
 
-.cust-chip:hover {
-  background: rgba(255, 255, 255, 0.15);
+.wstudio-preset-card:hover {
+  border-color: #203170;
+  background: #f1f5fb;
 }
 
-.cust-chip.active {
-  border-color: var(--pet-accent);
-  background: rgba(56, 189, 248, 0.22);
-  color: #ffffff;
-  font-weight: 600;
+.wstudio-preset-card.active {
+  background: #203170;
+  border-color: #203170;
 }
 
-.cust-two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  align-items: center;
-}
-
-.cust-slider {
-  width: 100%;
-  accent-color: var(--pet-accent);
-  cursor: pointer;
-}
-
-.cust-color-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.cust-color-dot {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-}
-
-.cust-color-dot.active {
-  border-color: #ffffff;
-  transform: scale(1.15);
-}
-
-.cust-inputs {
-  display: flex;
-  gap: 6px;
-}
-
-.cust-input {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 7px;
-  padding: 5px 8px;
-  color: #fff;
-  font-size: 11px;
-  outline: none;
-}
-
-.cust-input:focus {
-  border-color: var(--pet-accent);
-}
-
-.cust-input-name {
-  width: 86px;
-}
-
-.cust-input-greeting {
-  flex: 1;
-}
-
-.cust-footer {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.cust-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #cbd5e1;
-  cursor: pointer;
-}
-
-/* 提示吐司与一键设桌宠按钮 */
-.pet-toast {
-  margin-top: 6px;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #f8fafc;
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 320px;
-}
-
-.pet-toast-action {
-  border: none;
-  background: var(--pet-accent);
-  color: #0f172a;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.pet-tools {
-  width: 320px;
-  margin-top: 6px;
-  padding: 5px 12px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.78);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  align-items: center;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.pet-tools label {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  cursor: pointer;
-}
-
-/* 处理窗口 */
-.proc {
-  min-height: 100vh;
-  background: linear-gradient(165deg, #dbeafe 0%, #eff6ff 40%, #fdf2f8 100%);
-  padding: 16px 18px 20px;
-}
-
-.proc-titlebar {
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a;
-  margin-bottom: 10px;
-  word-break: break-all;
-}
-
-.proc-badge {
-  display: inline-block;
-  margin-top: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  background: rgba(15, 23, 42, 0.08);
-  color: #334155;
-}
-
-.proc-actions {
-  display: flex;
-  gap: 10px;
-  margin: 14px 0;
-}
-
-.proc-actions button {
-  flex: 1;
-  padding: 12px 14px;
-  border: none;
-  border-radius: 10px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  color: #fff;
-}
-
-.btn-pink {
-  background: linear-gradient(90deg, #f472b6, #ec4899);
-}
-.btn-pink:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.btn-blue {
-  background: linear-gradient(90deg, #38bdf8, #0ea5e9);
-}
-.btn-blue:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.proc-section-title {
+.wstudio-preset-title {
   font-size: 13px;
-  font-weight: 600;
-  color: #334155;
-  margin: 12px 0 8px;
+  font-weight: 800;
+  color: #203170;
+  margin-bottom: 3px;
 }
 
-.format-grid {
+.wstudio-preset-card.active .wstudio-preset-title {
+  color: #ffffff;
+}
+
+.wstudio-preset-sub {
+  font-size: 10.5px;
+  color: #536ba9;
+}
+
+.wstudio-preset-card.active .wstudio-preset-sub {
+  color: #dbe3f4;
+}
+
+.wstudio-format-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
-.format-grid button {
+.wstudio-fmt-card {
+  border: 1.5px solid rgba(32, 49, 112, 0.24);
+  border-radius: 10px;
+  background: #f8fafd;
   padding: 10px 6px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-radius: 8px;
-  background: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  color: #0f172a;
-  cursor: pointer;
-}
-
-.format-grid button.active {
-  border-color: #0ea5e9;
-  background: #e0f2fe;
-  color: #0369a1;
-}
-
-.bitrate-row {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
 }
 
-.bitrate-row button {
-  padding: 6px 12px;
+.wstudio-fmt-card:hover {
+  border-color: #203170;
+  background: #f1f5fb;
+}
+
+.wstudio-fmt-card.active {
+  background: #203170;
+  border-color: #203170;
+}
+
+.wstudio-fmt-name {
+  font-size: 14px;
+  font-weight: 800;
+  color: #203170;
+}
+
+.wstudio-fmt-card.active .wstudio-fmt-name {
+  color: #ffffff;
+}
+
+.wstudio-fmt-desc {
+  font-size: 10.5px;
+  color: #536ba9;
+}
+
+.wstudio-fmt-card.active .wstudio-fmt-desc {
+  color: #dbe3f4;
+}
+
+.wstudio-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wstudio-chip {
+  border: 1px solid rgba(32, 49, 112, 0.35);
   border-radius: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.15);
-  background: #fff;
+  background: #ffffff;
+  color: #203170;
   font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
   cursor: pointer;
 }
 
-.bitrate-row button.active {
-  border-color: #ec4899;
-  background: #fce7f3;
+.wstudio-chip.active {
+  background: #203170;
+  color: #ffffff;
+  border-color: #203170;
 }
 
-.progress-wrap {
-  margin-top: 16px;
+.wstudio-path-box {
+  background: #f3f5fb;
+  border: 1px solid rgba(32, 49, 112, 0.18);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: #203170;
+  word-break: break-all;
+  white-space: pre-wrap;
 }
 
-.progress-label {
-  font-size: 13px;
-  color: #475569;
-  margin-bottom: 6px;
+.wstudio-cta-bar {
+  display: flex;
 }
 
-.progress-bar {
+.wstudio-cta-btn {
+  flex: 1;
+  border: none;
+  border-radius: 10px;
+  background: #203170;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(32, 49, 112, 0.25);
+}
+
+.wstudio-cta-btn:hover:not(:disabled) {
+  background: #2f4488;
+}
+
+.wstudio-cta-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wstudio-progress-track {
   height: 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.12);
+  background: rgba(32, 49, 112, 0.12);
   overflow: hidden;
 }
 
-.progress-bar > div {
+.wstudio-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #64748b, #0f172a);
+  background: linear-gradient(90deg, #203170, #38bdf8);
   transition: width 0.15s ease;
 }
 
-.proc-footer {
-  margin-top: 18px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.proc-footer button {
-  padding: 8px 16px;
+.wstudio-warn {
+  margin-top: 8px;
+  padding: 8px 10px;
   border-radius: 8px;
-  border: 1px solid rgba(15, 23, 42, 0.15);
-  background: #fff;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.warn {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
   background: #fff7ed;
   border: 1px solid #fed7aa;
   color: #9a3412;
-  font-size: 12px;
-  line-height: 1.5;
+  font-size: 11.5px;
 }
 
-.err {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
+.wstudio-err {
+  padding: 10px;
+  border-radius: 8px;
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #991b1b;
@@ -688,62 +872,534 @@ body {
   white-space: pre-wrap;
 }
 
-.done-path {
-  margin-top: 12px;
+/* ============================================================================
+ * 3. 自定义泡泡序列 & 逐行样式/悬浮快捷编辑 (BubbleEditorTab)
+ * ============================================================================ */
+.wstudio-check-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 8px 0 10px;
   font-size: 12px;
-  color: #0f172a;
-  word-break: break-all;
-  padding: 10px;
-  background: rgba(255, 255, 255, 0.75);
-  border-radius: 10px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-.outdir-section {
-  margin-top: 14px;
+.wstudio-check-row label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
 }
 
-.outdir-header {
+.wstudio-check-row input {
+  accent-color: #203170;
+}
+
+.wstudio-seq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wstudio-seq-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(32, 49, 112, 0.25);
+  background: #f8fafd;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.wstudio-seq-item.active {
+  border-color: #203170;
+  background: rgba(32, 49, 112, 0.1);
+  font-weight: 700;
+}
+
+.wstudio-seq-badge {
+  background: #203170;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.wstudio-seq-step {
+  border: 1px solid rgba(32, 49, 112, 0.22);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #f8fafd;
+}
+
+.wstudio-seq-step-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.wstudio-ab-row {
+  display: flex;
   gap: 8px;
 }
 
-.outdir-actions {
+.wstudio-ab-slot {
+  flex: 1;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: 1px dashed rgba(32, 49, 112, 0.4);
+  background: #ffffff;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.wstudio-ab-slot.active {
+  border-style: solid;
+  border-width: 1.5px;
+  border-color: #203170;
+  background: rgba(32, 49, 112, 0.1);
+  font-weight: 700;
+}
+
+.wstudio-weight-inp {
+  width: 52px;
+  border: 1px solid rgba(32, 49, 112, 0.4);
+  border-radius: 5px;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: #203170;
+  text-align: right;
+}
+
+.wstudio-dashed-add {
+  border: 1px dashed rgba(32, 49, 112, 0.45);
+  border-radius: 8px;
+  background: transparent;
+  color: #203170;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px;
+  cursor: pointer;
+}
+
+.wstudio-dashed-add:hover {
+  background: rgba(32, 49, 112, 0.06);
+}
+
+.wstudio-add-bar {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.wstudio-bubble-canvas {
+  background: #f3f5fb;
+  border: 1px dashed rgba(32, 49, 112, 0.4);
+  border-radius: 10px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wstudio-canvas-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wstudio-row-idx {
+  font-size: 10.5px;
+  color: #536ba9;
+  width: 38px;
+  flex: 0 0 auto;
+}
+
+.wstudio-row-mods {
+  flex: 1;
+  display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
 
-.outdir-btn {
+.wstudio-mod-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 10px;
   border-radius: 7px;
-  border: 1px solid rgba(15, 23, 42, 0.14);
+  border: 1px solid rgba(32, 49, 112, 0.35);
   background: #ffffff;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11.5px;
   cursor: pointer;
-  transition: all 0.15s;
 }
 
-.outdir-btn:hover {
-  background: #f1f5f9;
-  border-color: rgba(15, 23, 42, 0.25);
+.wstudio-mod-pill.active {
+  border-width: 1.5px;
+  border-color: #203170;
+  background: rgba(32, 49, 112, 0.14);
+  font-weight: 700;
 }
 
-.outdir-btn-primary {
-  background: #0ea5e9;
+.wstudio-mod-del {
+  border: none;
+  background: transparent;
+  color: #c0392b;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.wstudio-lib-bar {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.wstudio-lib-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wstudio-lib-chip button {
+  border: 1px solid rgba(32, 49, 112, 0.35);
+  border-radius: 6px;
+  background: #f8fafd;
+  color: #203170;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.wstudio-lib-x {
+  margin-left: 2px;
+  color: #c0392b;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.wstudio-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.wstudio-input {
+  flex: 1;
+  min-width: 100px;
+  border: 1px solid rgba(32, 49, 112, 0.38);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #203170;
+  background: #ffffff;
+}
+
+.wstudio-select {
+  border: 1px solid rgba(32, 49, 112, 0.38);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: #203170;
+  background: #ffffff;
+}
+
+.wstudio-range {
+  flex: 1;
+  accent-color: #203170;
+  cursor: pointer;
+}
+
+.wstudio-biu-group {
+  display: flex;
+  gap: 4px;
+}
+
+.wstudio-biu-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(32, 49, 112, 0.38);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #203170;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wstudio-biu-btn.active {
+  background: #203170;
   color: #ffffff;
-  border-color: #0ea5e9;
-  font-weight: 600;
 }
 
-.outdir-btn-primary:hover {
-  background: #0284c7;
-  border-color: #0284c7;
+.wstudio-rand-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
 }
 
+.wstudio-rand-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.wstudio-rand-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wstudio-small-lbl {
+  font-size: 11px;
+  color: #536ba9;
+}
+
+.wstudio-bimg-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wstudio-bimg-card {
+  width: 92px;
+  border: 2px solid rgba(32, 49, 112, 0.2);
+  border-radius: 10px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  background: #f8fafd;
+  font-size: 10.5px;
+}
+
+.wstudio-bimg-card.active {
+  border-color: #203170;
+  background: rgba(32, 49, 112, 0.1);
+  font-weight: 700;
+}
+
+.wstudio-bimg-card img {
+  width: 64px;
+  height: 52px;
+  object-fit: contain;
+}
+
+/* ============================================================================
+ * 4. 吸附与翻转十字网格 & 角色/音效波形裁剪 (SnapAndSoundTabs)
+ * ============================================================================ */
+.wstudio-snap-modes {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 8px 0 12px;
+  font-size: 12.5px;
+}
+
+.wstudio-snap-modes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.wstudio-snap-modes input {
+  accent-color: #203170;
+}
+
+.wstudio-snap-grid {
+  display: grid;
+  grid-template-columns: 90px 190px 90px;
+  grid-template-rows: 30px 190px 30px;
+  gap: 6px;
+  margin: 0 auto;
+  place-items: center;
+  justify-content: center;
+}
+
+.wstudio-snap-cell {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11.5px;
+}
+
+.wstudio-snap-num {
+  width: 50px;
+  border: 1px solid rgba(32, 49, 112, 0.4);
+  border-radius: 6px;
+  padding: 2px 4px;
+  font-size: 11.5px;
+  color: #203170;
+  text-align: right;
+}
+
+.wstudio-snap-unit {
+  font-size: 10.5px;
+  color: #536ba9;
+}
+
+.wstudio-snap-preview {
+  position: relative;
+  width: 190px;
+  height: 190px;
+  border: 1.5px solid #203170;
+  border-radius: 10px;
+  background: #f6f8fd;
+  overflow: hidden;
+}
+
+.wstudio-snap-zone {
+  position: absolute;
+  pointer-events: none;
+}
+
+.wstudio-snap-flipline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed #c0392b;
+  pointer-events: none;
+}
+
+.wstudio-snap-off {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(246, 248, 253, 0.9);
+  color: #536ba9;
+  font-size: 12px;
+}
+
+.wstudio-role-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wstudio-role-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  border: 1.5px solid rgba(32, 49, 112, 0.25);
+  background: #f8fafd;
+  cursor: pointer;
+}
+
+.wstudio-role-card.active {
+  border-color: #203170;
+  background: rgba(32, 49, 112, 0.12);
+  font-weight: 700;
+}
+
+.wstudio-role-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: #e8ecf7;
+}
+
+.wstudio-role-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.wstudio-gif-tag {
+  background: #203170;
+  color: #ffffff;
+  font-size: 9.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.wstudio-role-del {
+  border: none;
+  background: transparent;
+  color: #c0392b;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wstudio-crop-box {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f6f8fd;
+  border: 1px solid rgba(32, 49, 112, 0.3);
+  text-align: center;
+}
+
+.wstudio-crop-canvas-wrap {
+  width: 260px;
+  height: 260px;
+  margin: 8px auto;
+  border: 1.5px dashed #203170;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #e8ecf7;
+  cursor: grab;
+}
+
+.wstudio-crop-canvas {
+  display: block;
+}
+
+.wstudio-sound-block {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafd;
+  border: 1px solid rgba(32, 49, 112, 0.16);
+  margin-bottom: 8px;
+}
+
+.wstudio-audio-cropper {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(32, 49, 112, 0.16);
+}
+
+.wstudio-wave-box {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f8fafd;
+  border: 1px solid rgba(32, 49, 112, 0.22);
+}
+
+.wstudio-wave-canvas {
+  width: 100%;
+  height: 88px;
+  display: block;
+  border-radius: 6px;
+  border: 1px solid rgba(32, 49, 112, 0.25);
+  margin: 6px 0;
+}

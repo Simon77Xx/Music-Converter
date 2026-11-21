@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises'
 import { basename, extname } from 'node:path'
 import type { DropTask } from '../shared/types'
 
-/** FFmpeg 常见可直接解码的扩展（不含各平台专有加密容器） */
+/** FFmpeg 常见可直接解码的扩展（含各大音乐平台常见的无损/有损与音视频容器） */
 export const COMMON_AUDIO_EXT = new Set([
   'mp3',
   'flac',
@@ -10,10 +10,16 @@ export const COMMON_AUDIO_EXT = new Set([
   'aac',
   'm4a',
   'ogg',
+  'oga',
   'opus',
   'wma',
+  'ape',
+  'aiff',
+  'aif',
+  'webm',
   'mp4',
-  'm4v'
+  'm4v',
+  'mkv'
 ])
 
 /** 已知专有/加密容器：需额外解密步骤，FFmpeg 通常无法直接解码 */

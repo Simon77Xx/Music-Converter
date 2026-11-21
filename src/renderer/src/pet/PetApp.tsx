@@ -1,14 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type {
-  PetAnimationMode,
-  PetConfig,
-  PetPresetId,
-  PetShapeMode,
-  PetThemeColor
-} from '../../../shared/types'
-import { PetPresetAvatar } from './PetPresets'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { PetConfig, ProcessTabId } from '../../../shared/types'
+import {
+  playPressSound,
+  playReleaseSound,
+  playTaskEndSound
+} from '../shared/whaleAudio'
 
-const IMAGE_EXT_SET = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'])
+const IMAGE_EXT_SET = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'])
 
 function isImagePath(p: string): boolean {
   const dot = p.lastIndexOf('.')
@@ -16,65 +14,142 @@ function isImagePath(p: string): boolean {
   return IMAGE_EXT_SET.has(p.slice(dot + 1).toLowerCase())
 }
 
-const DEFAULT_CONFIG: PetConfig = {
-  name: '音律喵',
-  presetId: 'cat',
-  shapeMode: 'full',
-  animation: 'float',
-  scale: 1,
-  greeting: '将音乐文件或文件夹拖给我吧 ~',
-  hideFrame: false,
-  theme: 'blue'
-}
-
 export function PetApp(): JSX.Element {
-  const [dragOver, setDragOver] = useState(false)
-  const [hint, setHint] = useState<string | null>(null)
-  const [droppedImageCandidate, setDroppedImageCandidate] = useState<string | null>(null)
-  const [clickThrough, setClickThrough] = useState(false)
-  const [customizing, setCustomizing] = useState(false)
-  const [petConfig, setPetConfig] = useState<PetConfig>(DEFAULT_CONFIG)
+  const [petConfig, setPetConfig] = useState<PetConfig | null>(null)
+  const [hovered, setHovered] = useState(false)
+  const [pressed, setPressed] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [dragFileOver, setDragFileOver] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
-  // 使用计数器防止鼠标划过容器内部子元素时触发 dragleave 导致边框闪烁
+  // 轻量提示条（仅在拖入文件或转换完成时短暂出现 3.5 秒，平时完全隐藏）
+  const [toastText, setToastText] = useState<string | null>(null)
+  const [droppedImgPath, setDroppedImgPath] = useState<string | null>(null)
+  const toastTimerRef = useRef<number | null>(null)
+
+  const pointerDownRef = useRef<{
+    active: boolean
+    startX: number
+    startY: number
+    moved: boolean
+  }>({ active: false, startX: 0, startY: 0, moved: false })
   const dragDepthRef = useRef(0)
+
+  const showToast = useCallback((msg: string, ms = 4000) => {
+    setToastText(msg)
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current)
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastText(null)
+      setDroppedImgPath(null)
+    }, ms)
+  }, [])
 
   useEffect(() => {
     void window.softcreate.getPetConfig().then((cfg) => {
-      if (cfg) setPetConfig(cfg)
+      setPetConfig(cfg)
     })
-  }, [])
 
-  const updateConfig = async (partial: Partial<PetConfig>) => {
-    setPetConfig((prev) => ({ ...prev, ...partial }))
-    const saved = await window.softcreate.savePetConfig(partial)
-    setPetConfig(saved)
+    const unsubCfg = window.softcreate.onPetConfigUpdated((cfg) => {
+      setPetConfig(cfg)
+    })
+
+    const unsubDone = window.softcreate.onJobCompleted((info) => {
+      setPetConfig((curr) => {
+        if (curr) {
+          playTaskEndSound(curr.sound)
+        }
+        return curr
+      })
+      const msg =
+        info.kind === 'folder'
+          ? '✨ ZIP 归档完成！'
+          : `✨ ${info.count} 首音乐已转为 ${info.format ?? ''}！`
+      showToast(msg, 4500)
+    })
+
+    return () => {
+      unsubCfg()
+      unsubDone()
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current)
+    }
+  }, [showToast])
+
+  // 处理小鲸鱼本体的指针按下、拖拽与释放
+  const handleWhalePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button === 2) {
+      e.preventDefault()
+      e.stopPropagation()
+      setMenuOpen((v) => !v)
+      return
+    }
+    if (e.button !== 0) return
+
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setPressed(true)
+    if (petConfig) {
+      playPressSound(petConfig.sound)
+    }
+
+    pointerDownRef.current = {
+      active: true,
+      startX: e.screenX,
+      startY: e.screenY,
+      moved: false
+    }
+    void window.softcreate.petDragStart()
   }
 
-  const handleUploadPhoto = async () => {
-    const updated = await window.softcreate.pickPetImage()
-    if (updated) {
-      setPetConfig(updated)
-      setHint('✨ 已成功换上你的专属桌宠照片！')
-      setDroppedImageCandidate(null)
+  const handleWhalePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = pointerDownRef.current
+    if (!st.active) return
+
+    const dx = e.screenX - st.startX
+    const dy = e.screenY - st.startY
+    if (!st.moved && dx * dx + dy * dy >= 9) {
+      st.moved = true
+      setDragging(true)
+      setMenuOpen(false)
+    }
+    if (st.moved) {
+      void window.softcreate.petDragMove()
     }
   }
 
-  const handleApplyDroppedImage = async (imgPath: string) => {
+  const handleWhalePointerUp = async (e: React.PointerEvent<HTMLDivElement>) => {
+    const st = pointerDownRef.current
+    if (!st.active) return
+    st.active = false
+
     try {
-      const updated = await window.softcreate.importPetImage(imgPath)
-      setPetConfig(updated)
-      setDroppedImageCandidate(null)
-      setHint('✨ 已将拖入的照片设为桌宠形象！')
-    } catch (err) {
-      setHint(err instanceof Error ? err.message : String(err))
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      // ignore
+    }
+
+    setPressed(false)
+    setDragging(false)
+    if (petConfig) {
+      playReleaseSound(petConfig.sound)
+    }
+
+    if (st.moved) {
+      // 松手后在桌面底层自动执行四边吸附与左贴边水平翻转
+      await window.softcreate.petDragEnd()
+    } else {
+      // 单击小鲸鱼 -> 直接弹出跨平台音乐转换界面
+      setMenuOpen(false)
+      void window.softcreate.openStudio('converter')
     }
   }
 
+  // 文件拖放处理
   const onDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     dragDepthRef.current += 1
-    setDragOver(true)
+    setDragFileOver(true)
   }, [])
 
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -87,7 +162,7 @@ export function PetApp(): JSX.Element {
     e.stopPropagation()
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
     if (dragDepthRef.current === 0) {
-      setDragOver(false)
+      setDragFileOver(false)
     }
   }, [])
 
@@ -96,356 +171,168 @@ export function PetApp(): JSX.Element {
       e.preventDefault()
       e.stopPropagation()
       dragDepthRef.current = 0
-      setDragOver(false)
-      setHint(null)
-      setDroppedImageCandidate(null)
+      setDragFileOver(false)
+      setDroppedImgPath(null)
 
       const files = Array.from(e.dataTransfer?.files ?? [])
-      if (files.length === 0) {
-        setHint('未检测到文件，请从资源管理器拖入。')
-        return
-      }
+      if (files.length === 0) return
 
       const paths = files.map((f) => window.softcreate.getPathForFile(f))
-
-      // 如果正在“定制桌宠”面板中，且拖入了单张图片，直接将该图片设为桌宠照片
-      if (customizing && paths.length === 1 && isImagePath(paths[0])) {
-        await handleApplyDroppedImage(paths[0])
-        return
+      if (petConfig) {
+        playPressSound(petConfig.sound)
       }
 
       try {
         const task = await window.softcreate.analyzeDrop(paths)
-        // 如果在主页拖入的是单张图片，询问用户是否想直接用它当桌宠形象
         if (task.kind === 'unsupported' && paths.length === 1 && isImagePath(paths[0])) {
-          setDroppedImageCandidate(paths[0])
-          setHint('检测到一张图片！你可以直接将它设为桌宠形象：')
+          setDroppedImgPath(paths[0])
+          showToast('检测到图片，点此设为桌宠形象', 7000)
           return
         }
         await window.softcreate.openTask(task)
       } catch (err) {
-        setHint(err instanceof Error ? err.message : String(err))
+        showToast(err instanceof Error ? err.message : String(err), 4500)
       }
     },
-    [customizing]
+    [petConfig, showToast]
   )
 
-  const toggleThrough = async () => {
-    const next = !clickThrough
-    setClickThrough(next)
-    if (next) {
-      setCustomizing(false)
-    } else {
-      await window.softcreate.setPetIgnoreMouse(false)
-    }
+  const handleSetDroppedImageAsRole = async () => {
+    if (!droppedImgPath) return
+    const updated = await window.softcreate.importPetImage(droppedImgPath)
+    setPetConfig(updated)
+    setDroppedImgPath(null)
+    showToast('✨ 已换上新桌宠形象！', 3000)
   }
 
-  // 当开启点击穿透时，鼠标移入控制栏/拖拽栏时临时关闭穿透
-  const handleInteractiveEnter = () => {
-    if (clickThrough) {
-      void window.softcreate.setPetIgnoreMouse(false)
-    }
+  const activeRole = useMemo(() => {
+    if (!petConfig) return { dataUrl: './whale/DSniang1.png', name: '默认小鲸鱼' }
+    return (
+      petConfig.roles.find((r) => r.id === petConfig.activeRoleId) ??
+      petConfig.roles[0] ?? { dataUrl: './whale/DSniang1.png', name: '默认小鲸鱼' }
+    )
+  }, [petConfig])
+
+  const openStudioTab = (tab: ProcessTabId) => {
+    setMenuOpen(false)
+    void window.softcreate.openStudio(tab)
   }
 
-  const handleInteractiveLeave = () => {
-    if (clickThrough) {
-      void window.softcreate.setPetIgnoreMouse(true)
-    }
-  }
-
-  const handleOpenOutputDir = async () => {
-    const dir = await window.softcreate.getOutputDir()
-    await window.softcreate.openPath(dir)
-  }
-
-  const hasCustomPhoto =
-    petConfig.presetId === 'custom' && Boolean(petConfig.customImageDataUrl)
+  const isFlipped = Boolean(petConfig?.isFlippedLeft)
 
   return (
-    <div className={`pet-root theme-${petConfig.theme}`}>
-      {/* 顶部悬浮控制条 */}
-      <div
-        className="pet-topbar"
-        onMouseEnter={handleInteractiveEnter}
-        onMouseLeave={handleInteractiveLeave}
-      >
-        <div className="pet-drag-handle" title="按住此处拖动桌宠到屏幕任意位置">
-          ⠿ {petConfig.name || '桌宠'}
-        </div>
-        <div className="pet-topbar-actions">
-          <button
-            type="button"
-            className={`pet-pill-btn ${customizing ? 'active' : ''}`}
-            title="上传自己的照片或定制桌宠外观"
-            onClick={() => {
-              setCustomizing((v) => !v)
-              setHint(null)
-              setDroppedImageCandidate(null)
-            }}
-          >
-            {customizing ? '✓ 完成' : '🎨 定制桌宠'}
-          </button>
-          <button
-            type="button"
-            className="pet-icon-btn"
-            title="打开转换输出目录 (SoftcreateOutput)"
-            onClick={() => void handleOpenOutputDir()}
-          >
-            📂
-          </button>
-          <button
-            type="button"
-            className="pet-icon-btn pet-close-btn"
-            title="退出程序"
-            onClick={() => void window.softcreate.quitApp()}
-          >
-            ✕
-          </button>
-        </div>
-      </div>
-
-      {/* 模式 A：桌宠制作与自定义面板 */}
-      {customizing ? (
-        <div
-          className="pet-customizer"
-          onDragEnter={onDragEnter}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={handleDrop}
-        >
-          <div className="cust-header">
-            <span>✨ 制作你的专属桌宠</span>
+    <div
+      className={`dshwv-root ${isFlipped ? 'dshwv-left' : ''} ${
+        dragging ? 'dshwv-dragging' : ''
+      }`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={handleDrop}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        setMenuOpen((v) => !v)
+      }}
+    >
+      {/* 拖入文件或转换完成时的迷你轻提示（左翻转时自动反向保持文字正向） */}
+      {(dragFileOver || toastText) && (
+        <div className="dshwv-mini-toast">
+          <span>{dragFileOver ? '🎵 松手即可导入转换' : toastText}</span>
+          {droppedImgPath && (
             <button
               type="button"
-              className="cust-upload-btn"
-              onClick={() => void handleUploadPhoto()}
+              className="dshwv-inline-btn"
+              onClick={(e) => {
+                e.stopPropagation()
+                void handleSetDroppedImageAsRole()
+              }}
             >
-              📷 上传照片 / GIF
-            </button>
-          </div>
-          <div className="cust-subhint">
-            支持 PNG / JPG / GIF 动图 / WebP，也可以直接把照片拖进此窗口
-          </div>
-
-          <div className="cust-section">
-            <div className="cust-label">形象选择（已上传照片或内置形象）</div>
-            <div className="cust-chip-row">
-              {(
-                [
-                  { id: 'custom', label: '🖼️ 我的照片' },
-                  { id: 'cat', label: '🐱 音律喵' },
-                  { id: 'robot', label: '🤖 赛博音姬' },
-                  { id: 'fox', label: '🦊 灵动小狐' },
-                  { id: 'headphone', label: '🎧 潮酷耳机' }
-                ] as { id: PetPresetId; label: string }[]
-              ).map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`cust-chip ${petConfig.presetId === item.id ? 'active' : ''}`}
-                  onClick={() => {
-                    if (item.id === 'custom' && !petConfig.customImageDataUrl) {
-                      void handleUploadPhoto()
-                    } else {
-                      void updateConfig({ presetId: item.id })
-                    }
-                  }}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="cust-section">
-            <div className="cust-label">照片裁剪与展示形态</div>
-            <div className="cust-chip-row">
-              {(
-                [
-                  { id: 'full', label: '全身立绘 (完整保留)' },
-                  { id: 'circle', label: '圆形头像框' },
-                  { id: 'rounded-card', label: '拍立得圆角框' }
-                ] as { id: PetShapeMode; label: string }[]
-              ).map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`cust-chip ${petConfig.shapeMode === s.id ? 'active' : ''}`}
-                  onClick={() => void updateConfig({ shapeMode: s.id })}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="cust-section">
-            <div className="cust-label">动态活力效果</div>
-            <div className="cust-chip-row">
-              {(
-                [
-                  { id: 'float', label: '☁️ 悬浮呼吸' },
-                  { id: 'bounce', label: '🎵 节拍摇摆' },
-                  { id: 'pulse', label: '💓 律动缩放' },
-                  { id: 'none', label: '⏸️ 静止' }
-                ] as { id: PetAnimationMode; label: string }[]
-              ).map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`cust-chip ${petConfig.animation === a.id ? 'active' : ''}`}
-                  onClick={() => void updateConfig({ animation: a.id })}
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="cust-section cust-two-col">
-            <div>
-              <div className="cust-label">
-                桌宠尺寸：{Math.round((petConfig.scale || 1) * 100)}%
-              </div>
-              <input
-                type="range"
-                min="0.65"
-                max="1.35"
-                step="0.05"
-                value={petConfig.scale || 1}
-                onChange={(e) => void updateConfig({ scale: Number(e.target.value) })}
-                className="cust-slider"
-              />
-            </div>
-            <div>
-              <div className="cust-label">主题色调</div>
-              <div className="cust-color-row">
-                {(
-                  [
-                    { id: 'blue', color: '#38bdf8', title: '天空蓝' },
-                    { id: 'pink', color: '#f472b6', title: '樱花粉' },
-                    { id: 'emerald', color: '#34d399', title: '薄荷绿' },
-                    { id: 'violet', color: '#a78bfa', title: '星夜紫' }
-                  ] as { id: PetThemeColor; color: string; title: string }[]
-                ).map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    title={c.title}
-                    className={`cust-color-dot ${petConfig.theme === c.id ? 'active' : ''}`}
-                    style={{ background: c.color }}
-                    onClick={() => void updateConfig({ theme: c.id })}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="cust-section">
-            <div className="cust-label">桌宠昵称 & 气泡台词</div>
-            <div className="cust-inputs">
-              <input
-                type="text"
-                placeholder="桌宠昵称"
-                maxLength={14}
-                value={petConfig.name}
-                onChange={(e) => void updateConfig({ name: e.target.value })}
-                className="cust-input cust-input-name"
-              />
-              <input
-                type="text"
-                placeholder="自定义桌宠平时显示的台词..."
-                maxLength={40}
-                value={petConfig.greeting}
-                onChange={(e) => void updateConfig({ greeting: e.target.value })}
-                className="cust-input cust-input-greeting"
-              />
-            </div>
-          </div>
-
-          <div className="cust-footer">
-            <label className="cust-checkbox">
-              <input
-                type="checkbox"
-                checked={petConfig.hideFrame}
-                onChange={(e) => void updateConfig({ hideFrame: e.target.checked })}
-              />
-              无边框纯桌宠模式（隐藏半透明背景框）
-            </label>
-          </div>
-        </div>
-      ) : (
-        /* 模式 B：正常桌宠互动与拖放模式 */
-        <div
-          className={`pet-drop ${dragOver ? 'dragover' : ''} ${
-            petConfig.hideFrame ? 'frameless' : ''
-          }`}
-          onDragEnter={onDragEnter}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={handleDrop}
-        >
-          {/* 顶部对话气泡 */}
-          <div className="pet-bubble">
-            {dragOver
-              ? '✨ 松开鼠标，交给我来处理吧！'
-              : petConfig.greeting || '将音乐文件或文件夹拖给我吧 ~'}
-          </div>
-
-          {/* 桌宠主体区域（支持缩放与动态动画） */}
-          <div
-            className={`pet-avatar-stage anim-${petConfig.animation}`}
-            style={{
-              transform: `scale(${petConfig.scale || 1})`
-            }}
-          >
-            {hasCustomPhoto ? (
-              <div className={`pet-photo-wrap shape-${petConfig.shapeMode}`}>
-                <img
-                  className="pet-custom-img"
-                  src={petConfig.customImageDataUrl}
-                  alt={petConfig.name}
-                />
-              </div>
-            ) : (
-              <div className="pet-svg-wrap">
-                <PetPresetAvatar presetId={petConfig.presetId} />
-              </div>
-            )}
-          </div>
-
-          {/* 底部快速提示 */}
-          <div className="pet-subhint">
-            拖入音频转码压缩 · 拖入文件夹打包 ZIP
-          </div>
-        </div>
-      )}
-
-      {hint && (
-        <div className="pet-toast">
-          <span>{hint}</span>
-          {droppedImageCandidate && (
-            <button
-              type="button"
-              className="pet-toast-action"
-              onClick={() => void handleApplyDroppedImage(droppedImageCandidate)}
-            >
-              ✨ 设为桌宠照片
+              设为形象
             </button>
           )}
         </div>
       )}
 
-      <div
-        className="pet-tools"
-        onMouseEnter={handleInteractiveEnter}
-        onMouseLeave={handleInteractiveLeave}
-      >
-        <label>
-          <input type="checkbox" checked={clickThrough} onChange={toggleThrough} />
-          点击穿透（移至此处或顶部栏可操作）
-        </label>
+      {/* 承载按压 Q 弹缩放的小鲸鱼身体层 */}
+      <div className={`dshwv-body ${pressed ? 'dshwv-pressed' : ''}`}>
+        <div
+          className="dshwv-img-wrap"
+          onPointerDown={handleWhalePointerDown}
+          onPointerMove={handleWhalePointerMove}
+          onPointerUp={(e) => void handleWhalePointerUp(e)}
+          title="单击：打开音乐格式转换器 | 按住拖动：四边自动吸附 | 右键：菜单"
+        >
+          <img
+            className="dshwv-img"
+            src={activeRole.dataUrl}
+            alt={activeRole.name}
+            draggable={false}
+          />
+        </div>
       </div>
+
+      {/* 角上悬停三横线汉堡按钮 ☰（完全复刻你的截图样式） */}
+      {!petConfig?.hideMenuBtn && (
+        <button
+          type="button"
+          className={`dshwv-menu-btn ${
+            hovered || menuOpen ? 'dshwv-menu-btn-visible' : ''
+          }`}
+          title="桌宠设置与快捷菜单"
+          onClick={(e) => {
+            e.stopPropagation()
+            setMenuOpen((v) => !v)
+          }}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+      )}
+
+      {/* 点击 ☰ 或右键弹出的轻量快捷菜单 */}
+      {menuOpen && (
+        <div
+          className="dshwv-menu dshwv-menu-open"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="dshwv-quick-item primary"
+            onClick={() => openStudioTab('converter')}
+          >
+            🎵 跨平台音乐格式转换
+          </button>
+          <button
+            type="button"
+            className="dshwv-quick-item"
+            onClick={() => openStudioTab('sound-role')}
+          >
+            🐳 更换桌宠形象 & 音效
+          </button>
+          <button
+            type="button"
+            className="dshwv-quick-item"
+            onClick={async () => {
+              setMenuOpen(false)
+              const dir = await window.softcreate.getOutputDir()
+              await window.softcreate.openPath(dir)
+            }}
+          >
+            📂 打开转换输出目录
+          </button>
+          <div className="dshwv-menu-sep" />
+          <button
+            type="button"
+            className="dshwv-quick-item danger"
+            onClick={() => void window.softcreate.quitApp()}
+          >
+            ✕ 退出小鲸鱼
+          </button>
+        </div>
+      )}
     </div>
   )
 }
