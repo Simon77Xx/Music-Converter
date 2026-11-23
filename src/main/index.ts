@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, shell, type MenuItemConstructorOptions } from 'electron'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -106,6 +106,7 @@ async function createPetWindow(): Promise<void> {
     alwaysOnTop: true,
     skipTaskbar: false,
     resizable: false,
+    title: 'MuSwitch',
     icon: getAppIconPath(),
     webPreferences: {
       preload: getPreloadPath(),
@@ -288,7 +289,7 @@ function openStudioWindow(options?: { tab?: ProcessTabId; taskId?: string }): vo
     minHeight: 560,
     show: false,
     icon: getAppIconPath(),
-    title: '小鲸鱼音乐转换器 · 跨平台导入网易云 / Apple Music',
+    title: 'MuSwitch · 跨平台音乐格式转换',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: getPreloadPath(),
@@ -627,9 +628,154 @@ function registerIpc(): void {
   })
 }
 
+function setupChineseAppMenu(): void {
+  const isMac = process.platform === 'darwin'
+
+  const viewSubmenu: MenuItemConstructorOptions[] = [
+    { label: '重新加载', role: 'reload' },
+    { label: '强制重新加载', role: 'forceReload' },
+    { type: 'separator' },
+    { label: '实际大小', role: 'resetZoom' },
+    { label: '放大', role: 'zoomIn' },
+    { label: '缩小', role: 'zoomOut' },
+    { type: 'separator' },
+    { label: '切换全屏', role: 'togglefullscreen' },
+    ...(isDev
+      ? [
+          { type: 'separator' as const },
+          { label: '开发者工具', role: 'toggleDevTools' as const }
+        ]
+      : [])
+  ]
+
+  const template: MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            label: 'MuSwitch',
+            submenu: [
+              { label: '关于 MuSwitch', role: 'about' as const },
+              { type: 'separator' as const },
+              { label: '隐藏', role: 'hide' as const },
+              { label: '隐藏其他', role: 'hideOthers' as const },
+              { label: '显示全部', role: 'unhide' as const },
+              { type: 'separator' as const },
+              { label: '退出 MuSwitch', role: 'quit' as const }
+            ]
+          }
+        ]
+      : []),
+    {
+      label: '文件',
+      submenu: [
+        {
+          label: '打开音乐转换器',
+          accelerator: 'CmdOrCtrl+1',
+          click: () => {
+            openStudioWindow({ tab: 'converter' })
+          }
+        },
+        {
+          label: '打开转换输出目录',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            void ensureOutputDir().then((dir) => shell.openPath(dir))
+          }
+        },
+        { type: 'separator' },
+        { label: '关闭窗口', role: 'close' },
+        {
+          label: '退出 MuSwitch',
+          accelerator: 'CmdOrCtrl+Q',
+          click: () => {
+            for (const taskId of Array.from(jobAbortControllers.keys())) {
+              abortTaskJob(taskId)
+            }
+            app.quit()
+          }
+        }
+      ]
+    },
+    {
+      label: '编辑',
+      submenu: [
+        { label: '撤销', role: 'undo' },
+        { label: '重做', role: 'redo' },
+        { type: 'separator' },
+        { label: '剪切', role: 'cut' },
+        { label: '复制', role: 'copy' },
+        { label: '粘贴', role: 'paste' },
+        { label: '全选', role: 'selectAll' }
+      ]
+    },
+    {
+      label: '视图',
+      submenu: viewSubmenu
+    },
+    {
+      label: '窗口',
+      submenu: [
+        { label: '最小化', role: 'minimize' },
+        {
+          label: '显示 MuSwitch 桌宠',
+          click: () => {
+            if (petWindow && !petWindow.isDestroyed()) {
+              if (petWindow.isMinimized()) {
+                petWindow.restore()
+              }
+              petWindow.show()
+              petWindow.focus()
+            } else {
+              void createPetWindow()
+            }
+          }
+        },
+        {
+          label: '打开音乐转换器',
+          click: () => {
+            openStudioWindow({ tab: 'converter' })
+          }
+        },
+        {
+          label: '桌宠形象与音效设置',
+          click: () => {
+            openStudioWindow({ tab: 'sound-role' })
+          }
+        }
+      ]
+    },
+    {
+      label: '帮助',
+      submenu: [
+        {
+          label: '关于 MuSwitch',
+          click: () => {
+            void dialog.showMessageBox({
+              type: 'info',
+              title: '关于 MuSwitch',
+              message: 'MuSwitch',
+              detail: `版本：v${app.getVersion()}\n\n跨平台音乐格式转换工具 · 桌面挂件`,
+              buttons: ['确定']
+            })
+          }
+        },
+        {
+          label: '访问 GitHub 项目主页',
+          click: () => {
+            void shell.openExternal('https://github.com/Simon77Xx/Music-Converter')
+          }
+        }
+      ]
+    }
+  ]
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 app.whenReady().then(async () => {
   await ensureOutputDir()
   registerIpc()
+  setupChineseAppMenu()
   await createPetWindow()
 
   app.on('activate', () => {

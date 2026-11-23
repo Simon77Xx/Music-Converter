@@ -2,7 +2,7 @@ import archiver from 'archiver'
 import { createWriteStream } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { basename, sep } from 'node:path'
-import { normalizeForCompare, resolveUniqueOutputPath } from './paths'
+import { OUTPUT_DIR_NAME, normalizeForCompare, resolveUniqueOutputPath } from './paths'
 
 export async function zipFolderTo(
   folderPath: string,
@@ -18,7 +18,7 @@ export async function zipFolderTo(
   const normFolder = normalizeForCompare(folderPath)
   const normOutDir = normalizeForCompare(outputDir)
   if (normOutDir === normFolder || normOutDir.startsWith(normFolder + sep)) {
-    throw new Error('不能直接打包包含输出目录（SoftcreateOutput）的文件夹，以免产生无限递归打包。')
+    throw new Error(`不能直接打包包含输出目录（${OUTPUT_DIR_NAME}）的文件夹，以免产生无限递归打包。`)
   }
 
   const name = basename(folderPath) || 'archive'

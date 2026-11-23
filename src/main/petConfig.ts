@@ -98,7 +98,7 @@ export const DEFAULT_PET_CONFIG: PetConfig = {
         {
           id: 'm-welcome-1',
           kind: 'text',
-          text: '小鲸鱼桌面音律站',
+          text: 'MuSwitch 桌面音律站',
           style: { ...DEFAULT_STYLE_LABEL }
         }
       ],

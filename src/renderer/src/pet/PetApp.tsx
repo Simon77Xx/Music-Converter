@@ -329,7 +329,7 @@ export function PetApp(): JSX.Element {
             className="dshwv-quick-item danger"
             onClick={() => void window.softcreate.quitApp()}
           >
-            ✕ 退出小鲸鱼
+            ✕ 退出 MuSwitch
           </button>
         </div>
       )}

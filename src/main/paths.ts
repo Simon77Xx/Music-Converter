@@ -5,7 +5,7 @@ import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 /** 跨平台：用户主目录下的默认输出子目录 */
-export const OUTPUT_DIR_NAME = 'SoftcreateOutput'
+export const OUTPUT_DIR_NAME = 'MuSwitchOutput'
 
 let cachedCustomOutputDir: string | null | undefined = undefined
 

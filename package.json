@@ -1,7 +1,7 @@
 {
-  "name": "softcreate",
-  "version": "0.2.0",
-  "description": "桌宠音乐转换 / 文件夹归档（Electron）",
+  "name": "muswitch",
+  "version": "0.2.1",
+  "description": "MuSwitch 跨平台音乐格式转换与桌面挂件（Electron）",
   "author": "Simon77Xx",
   "main": "out/main/index.js",
   "type": "module",
@@ -14,8 +14,8 @@
     "dist:mac": "electron-vite build && electron-builder --mac --publish never"
   },
   "build": {
-    "appId": "com.softcreate.musicconverter",
-    "productName": "Softcreate",
+    "appId": "com.muswitch.app",
+    "productName": "MuSwitch",
     "icon": "public/icon.png",
     "directories": {
       "output": "release"
@@ -48,7 +48,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Softcreate 桌宠"
+      "language": "2052",
+      "shortcutName": "MuSwitch"
     },
     "mac": {
       "target": [

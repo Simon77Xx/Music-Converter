@@ -1,6 +1,6 @@
-# Softcreate
+# MuSwitch
 
-A small **Electron** desktop utility: a transparent desktop mascot acts as the drag-and-drop entry point. It supports **ZIP archiving for folders** and **transcoding / lossy re-encoding for common audio formats**. Output is written by default to a `SoftcreateOutput` folder under the user’s home directory.
+A small **Electron** desktop utility: a transparent desktop mascot acts as the drag-and-drop entry point. It supports **ZIP archiving for folders** and **transcoding / lossy re-encoding for common audio formats**. Output is written by default to a `MuSwitchOutput` folder under the user’s home directory.
 
 ## Features
 
@@ -44,8 +44,8 @@ Place your artwork as **`mascot.png`** in the **`public/`** directory at the pro
 
 Default output locations:
 
-- **Windows**: `%USERPROFILE%\SoftcreateOutput`
-- **macOS / Linux**: `~/SoftcreateOutput`
+- **Windows**: `%USERPROFILE%\MuSwitchOutput`
+- **macOS / Linux**: `~/MuSwitchOutput`
 
 ## Supported audio (formats FFmpeg can decode directly)
 
